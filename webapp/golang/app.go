@@ -203,20 +203,8 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 		}
 
 		p.Comments = comments
-
-		err = db.Get(&p.User, "SELECT * FROM `users` WHERE `id` = ?", p.UserID)
-		if err != nil {
-			return nil, err
-		}
-
 		p.CSRFToken = csrfToken
-
-		if p.User.DelFlg == 0 {
-			posts = append(posts, p)
-		}
-		if len(posts) >= postsPerPage {
-			break
-		}
+		posts = append(posts, p)
 	}
 
 	return posts, nil
@@ -386,7 +374,11 @@ func getIndex(w http.ResponseWriter, r *http.Request) {
 
 	results := []Post{}
 
-	err := db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` ORDER BY `created_at` DESC")
+	err := db.Select(
+		&results,
+		"SELECT p.id AS `id`, p.user_id AS `user_id`, p.body AS `body`, p.mime AS `mime`, p.created_at AS `created_at`, u.account_name AS `user.account_name` FROM posts AS p JOIN users AS u ON (p.user_id=u.id) WHERE u.del_flg=0 ORDER BY p.created_at DESC LIMIT ?",
+		postsPerPage,
+	)
 	if err != nil {
 		log.Print(err)
 		return
@@ -432,7 +424,15 @@ func getAccountName(w http.ResponseWriter, r *http.Request) {
 
 	results := []Post{}
 
-	err = db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `user_id` = ? ORDER BY `created_at` DESC", user.ID)
+	err = db.Select(
+		&results,
+		"SELECT p.id AS `id`, p.user_id AS `user_id`, p.body AS `body`, p.mime AS `mime`, p.created_at AS `created_at`, u.account_name AS `user.account_name` FROM posts AS p JOIN users AS u ON (p.user_id=u.id) WHERE u.del_flg=0 AND p.user_id=? ORDER BY p.created_at DESC LIMIT ?",
+		user.ID,
+		postsPerPage,
+	)
+	for _, post := range results {
+		post.User = user
+	}
 	if err != nil {
 		log.Print(err)
 		return
@@ -520,7 +520,13 @@ func getPosts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	results := []Post{}
-	err = db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `created_at` <= ? ORDER BY `created_at` DESC", t.Format(ISO8601Format))
+	// err = db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `created_at` <= ? ORDER BY `created_at` DESC", t.Format(ISO8601Format))
+	err = db.Select(
+		&results,
+		"SELECT p.id AS `id`, p.user_id AS `user_id`, p.body AS `body`, p.mime AS `mime`, p.created_at AS `created_at`, u.account_name as `user.account_name` FROM posts AS p JOIN users AS u ON (p.user_id=u.id) WHERE u.del_flg=0 AND p.created_at <= ? ORDER BY p.created_at DESC LIMIT ?",
+		t.Format(ISO8601Format),
+		postsPerPage,
+	)
 	if err != nil {
 		log.Print(err)
 		return
@@ -556,7 +562,12 @@ func getPostsID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	results := []Post{}
-	err = db.Select(&results, "SELECT * FROM `posts` WHERE `id` = ?", pid)
+	err = db.Select(
+		&results,
+		"SELECT p.id AS `id`, p.user_id AS `user_id`, p.body AS `body`, p.mime AS `mime`, p.created_at AS `created_at`, u.account_name as `user.account_name` FROM posts AS p JOIN users AS u ON (p.user_id=u.id) WHERE u.del_flg=0 AND p.id=? ORDER BY p.created_at DESC LIMIT ?",
+		pid,
+		postsPerPage,
+	)
 	if err != nil {
 		log.Print(err)
 		return
@@ -614,19 +625,19 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mime := ""
-	ext := ""
+	// ext := ""
 	if file != nil {
 		// 投稿のContent-Typeからファイルのタイプを決定する
 		contentType := header.Header["Content-Type"][0]
 		if strings.Contains(contentType, "jpeg") {
 			mime = "image/jpeg"
-			ext = "jpg"
+			// ext = "jpg"
 		} else if strings.Contains(contentType, "png") {
 			mime = "image/png"
-			ext = "png"
+			// ext = "png"
 		} else if strings.Contains(contentType, "gif") {
 			mime = "image/gif"
-			ext = "gif"
+			// ext = "gif"
 		} else {
 			session := getSession(r)
 			session.Values["notice"] = "投稿できる画像形式はjpgとpngとgifだけです"
@@ -671,13 +682,13 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fp, err := os.Create(fmt.Sprintf("/home/isucon/private_isu/webapp/public/image/%d.%s", pid, ext))
-	defer fp.Close()
-	if err != nil {
-		log.Print(err)
-		return
-	}
-	fp.Write(filedata)
+	// fp, err := os.Create(fmt.Sprintf("/home/isucon/private_isu/webapp/public/image/%d.%s", pid, ext))
+	// defer fp.Close()
+	// if err != nil {
+	// 	log.Print(err)
+	// 	return
+	// }
+	// fp.Write(filedata)
 
 	http.Redirect(w, r, "/posts/"+strconv.FormatInt(pid, 10), http.StatusFound)
 }
